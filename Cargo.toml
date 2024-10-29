@@ -1,0 +1,25 @@
+[package]
+name = "cfd-rt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ndarray={ version = "0.16", features = ["serde", "approx"] }
+serde="1.0.213"
+serde_json = "1.0.132"
+num = "0.4.3"
+ndarray-interp = "0.4.1"
+log = "0.4.22"
+indexmap = "2.6.0"
+parking_lot = "0.12.3"
+thiserror = "2.0.3"
+anyhow = "1.0.93"
+downcast-rs = "1.0.93"
+approx = "0.5.1"
+
+[features]
+f64 = []
+
+[profile.opt-dev]
+inherits = "dev"
+opt-level = 2
