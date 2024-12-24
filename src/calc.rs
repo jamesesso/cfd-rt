@@ -12,7 +12,7 @@ pub(crate) fn laplacian<S: DataF>(f: &ArrayBase2F<S>, dx: Float) -> Array2F {
 
     let out_dim: [usize; 2] = f.shape()[0..2].try_into().unwrap();
     let mut out = Array2::zeros(out_dim);
-    let lap = (dfdx + dfdy) / dx.powi(2);
+    // let lap = (dfdx + dfdy) / dx.powi(2);
     out.slice_mut(s![1..-1, 1..-1]).assign(&lap);
 
     out
