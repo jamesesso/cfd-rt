@@ -17,8 +17,18 @@ anyhow = "1.0.93"
 downcast-rs = "1.0.93"
 approx = "0.5.1"
 
+# Dependencies for WebGPU support.
+pollster = { version = "0.4.0", features = ["macro"], optional = true }
+flume = { version = "0.11.1", features = ["async"], optional = true}
+wgpu = { version = "23.0.1", optional = true }
+bytemuck = { version = "1.21.0", optional = true }
+
+[dev-dependencies]
+test-log = "0.2.16"
+
 [features]
 f64 = []
+wgpu = ["dep:wgpu", "dep:bytemuck", "dep:pollster", "dep:flume"]
 
 [profile.opt-dev]
 inherits = "dev"
