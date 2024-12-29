@@ -29,7 +29,7 @@ pub use crate::{
 pub type Float = f64;
 
 #[cfg(not(feature = "f64"))]
-pub type Float = f64;
+pub type Float = f32;
 
 // Marker traits to make handling generic functions over arrays easier.
 pub trait DataF: Data<Elem = Float> {}
@@ -46,3 +46,19 @@ pub type ArrayBase3F<S> = ArrayBaseF<S, Ix3>;
 pub type Array1F = Array1<Float>;
 pub type Array2F = Array2<Float>;
 pub type Array3F = Array3<Float>;
+
+#[cfg(test)]
+mod tests {
+    use std::any::type_name;
+
+    use super::*;
+
+    #[test]
+    fn test_float_type() {
+        #[cfg(feature = "f64")]
+        assert_eq!(type_name::<Float>(), type_name::<f64>());
+
+        #[cfg(not(feature = "f64"))]
+        assert_eq!(type_name::<Float>(), type_name::<f32>());
+    }
+}
