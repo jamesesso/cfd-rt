@@ -1,0 +1,22 @@
+#[allow(unused_imports)]
+pub use wgpu::{
+    BindGroup,
+    BindGroupDescriptor,
+    BindGroupEntry,
+    BindGroupLayout,
+    BindGroupLayoutDescriptor,
+    Buffer,
+    BufferAddress,
+    BufferDescriptor,
+    BufferUsages,
+    CommandEncoder,
+    CommandEncoderDescriptor,
+    ComputePassDescriptor,
+    ComputePipeline,
+    ComputePipelineDescriptor,
+    PipelineLayoutDescriptor,
+    Queue,
+    ShaderModule,
+    ShaderModuleDescriptor,
+    ShaderSource,
+};
