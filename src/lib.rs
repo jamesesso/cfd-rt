@@ -1,4 +1,5 @@
 #![allow(
+    async_fn_in_trait,
     clippy::reversed_empty_ranges,
     non_snake_case,
     dead_code,
