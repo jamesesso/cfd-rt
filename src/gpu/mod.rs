@@ -11,6 +11,7 @@ use thiserror::*;
 
 use crate::gpu::prelude::*;
 
+pub mod advect;
 pub mod common;
 pub mod copy;
 mod prelude;
@@ -19,7 +20,7 @@ mod prelude;
 
 /// Holds the statically loaded WGSL modules in the format `(module_label,
 /// module_string)`.
-const COMPUTE_SHADER_FILES: &[(&str, &str)] = &[];
+const COMPUTE_SHADER_FILES: &[(&str, &str)] = &[("advect", include_str!("shaders/advect.wgsl"))];
 
 /// Sets the default workgroup size used in the shaders.
 ///
