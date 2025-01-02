@@ -196,6 +196,77 @@ impl DeviceState {
             ))
     }
 
+    /// Creates a set of [`Buffers`] and a [`BindGroup`] and [`BindGroupLayout`]
+    /// containing all of them.
+    ///
+    /// This is a convenience function as commonly a [`DeviceOp`] wants a series
+    /// of new buffers with a respective [`BindGroup`] and
+    /// [`BindGroupLayout`]. The return type [`ResourceBundle`]
+    /// is just a wrapper type.
+    fn create_resources(
+        &self,
+        label: &str,
+        buf_desc: &[BufferDescriptor<'_>],
+    ) -> Result<ResourceBundle, DeviceStateError> {
+        let mut layout_entries = Vec::with_capacity(buf_desc.len());
+        let mut buf_vec = Vec::with_capacity(buf_desc.len());
+
+        for (n, b) in buf_desc.iter().enumerate() {
+            // Create and push Buffer to output Vec.
+            let buf =
+                self.create_buffer(b.label.ok_or(DeviceStateError::UnnamedBufferCreation)?, b)?;
+            buf_vec.push(buf.clone());
+
+            let ty = match b.usage.intersects(BufferUsages::UNIFORM) {
+                true => wgpu::BufferBindingType::Uniform,
+                false => wgpu::BufferBindingType::Storage { read_only: false },
+            };
+
+            layout_entries.push(wgpu::BindGroupLayoutEntry {
+                binding: n as u32,
+                visibility: wgpu::ShaderStages::COMPUTE,
+                ty: wgpu::BindingType::Buffer {
+                    ty,
+                    has_dynamic_offset: false,
+                    min_binding_size: Some(b.size.try_into().unwrap()),
+                },
+                count: None,
+            });
+        }
+
+        // This needs to be outside the loop to keep the borrow checker happy.
+        let bg_entries: Vec<_> = buf_vec
+            .iter()
+            .enumerate()
+            .map(|(n, b)| BindGroupEntry {
+                binding: n as u32,
+                resource: b.as_entire_binding(),
+            })
+            .collect();
+
+        let layout_desc = &BindGroupLayoutDescriptor {
+            label: Some(label),
+            entries: &layout_entries[..],
+        };
+
+        let layout = self.create_bind_group_layout(label, layout_desc)?;
+
+        let bind_group = self.create_bind_group(
+            label,
+            &BindGroupDescriptor {
+                label: Some(label),
+                layout: &layout,
+                entries: &bg_entries[..],
+            },
+        )?;
+
+        Ok(ResourceBundle {
+            buffers: buf_vec,
+            bind_group_layout: layout,
+            bind_group,
+        })
+    }
+
     /// Creates a [`ComputePipeline`] with [`wgpu::Device`] and returns a handle
     /// to it.
     ///
@@ -274,6 +345,14 @@ impl DeviceState {
 
         Ok(())
     }
+}
+
+/// Wrapper return type for [`DeviceState::create_resources`].
+#[derive(Debug)]
+pub(crate) struct ResourceBundle {
+    pub buffers: Vec<Rc<Buffer>>,
+    pub bind_group_layout: Rc<BindGroupLayout>,
+    pub bind_group: Rc<BindGroup>,
 }
 
 /// Struct that owns a [`DeviceState`] and references to all the [`DeviceOp`]
@@ -455,6 +534,8 @@ pub enum DeviceStateError {
     ComputePipelineAlreadyAllocatead(String),
     #[error("Could not install DeviceOp due to error from DeviceOp::exec_init()")]
     DeviceOpInstall(#[from] anyhow::Error),
+    #[error("Unnamed buffer passed to create_resources")]
+    UnnamedBufferCreation,
 }
 
 #[cfg(test)]
@@ -590,6 +671,56 @@ mod tests {
 
         assert!(state.bind_group("test3").is_none());
         assert!(state.create_bind_group("test1", &bg_desc).is_err());
+
+        Ok(())
+    }
+
+    // Note that this on its own cannot test BindGroup and BindGroupLayout very
+    // well, due to these types being totally opaque.
+    #[allow(unused_braces)] // Fixes clippy issue with test macros.
+    #[test_log::test(pollster::test)]
+    async fn test_device_state_create_resources() -> anyhow::Result<()> {
+        let state = DeviceState::new().await.expect(
+            "Could not build GPU device. wgpu is likely incompatable on
+            this system.",
+        );
+
+        let mut test_bufs = [
+            BufferDescriptor {
+                label: Some("test"),
+                size: 100,
+                usage: BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            },
+            BufferDescriptor {
+                label: Some("test2"),
+                size: 150,
+                usage: BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            },
+            BufferDescriptor {
+                label: Some("test3"),
+                size: 125,
+                usage: BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            },
+        ];
+
+        let res = state.create_resources("test", &test_bufs)?;
+
+        assert_eq!(res.buffers[0].size(), 100);
+        assert_eq!(res.buffers[1].size(), 150);
+        assert_eq!(res.buffers[2].size(), 125);
+
+        assert_eq!(res.bind_group, state.bind_group("test").unwrap());
+        assert_eq!(
+            res.bind_group_layout,
+            state.bind_group_layout("test").unwrap()
+        );
+
+        test_bufs[0].label = None;
+
+        assert!(state.create_resources("test", &test_bufs).is_err());
 
         Ok(())
     }
