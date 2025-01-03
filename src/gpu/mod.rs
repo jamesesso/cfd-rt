@@ -11,6 +11,7 @@ use thiserror::*;
 
 use crate::gpu::prelude::*;
 
+pub mod common;
 pub mod copy;
 mod prelude;
 

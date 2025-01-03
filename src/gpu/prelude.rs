@@ -5,6 +5,7 @@ pub use wgpu::{
     BindGroupEntry,
     BindGroupLayout,
     BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry,
     Buffer,
     BufferAddress,
     BufferDescriptor,
