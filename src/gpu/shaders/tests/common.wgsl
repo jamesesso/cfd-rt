@@ -12,10 +12,14 @@ var<uniform> N: vec3<u32>;
 
 @group(0)
 @binding(3)
-var<storage, read_write> u: array<f32>;
+var<storage, read_write> x: array<f32>;
 
 @group(0)
 @binding(4)
+var<storage, read_write> u: array<f32>;
+
+@group(0)
+@binding(5)
 var<storage, read_write> u0: array<f32>;
 
 // Turns a 1D index into a 3D index, using N as the array strides.
@@ -59,4 +63,11 @@ fn dx_dt_test(@builtin(global_invocation_id) gid: vec3<u32>) {
         default: { out = 10000.0; }
     }
     u[gid.x] = out;
+}
+
+// Test to check that x is set up correctly.
+@compute
+@workgroup_size(32)
+fn x_test(@builtin(global_invocation_id) gid: vec3<u32>) {
+    u[gid.x] = 5.0 * x[gid.x];
 }

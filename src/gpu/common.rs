@@ -13,11 +13,12 @@ use crate::{Array3F, Float};
 /// |  `dt`  | Timestep |
 /// |  `dx`  | Grid spacing |
 /// |  `N`   | `vec3` containing `(Nx, Ny, 2)` |
+/// |  `x`   | Array containing the values of xij |
 /// |  `u`   | velocity array of the current step. |
 /// |  `u0`   | velocity array of the previous step. |
 ///
-/// (`Nx` and `Ny` are the number of poitns in the x and y direction
-/// respectively).
+/// *`Nx` and `Ny` are the number of poitns in the x and y direction
+/// respectively. xij is the position of a grid point ij.*
 ///
 /// For this operation [`CommonOp::device_exec()`] is comparitvely less
 /// important for this op than many others as it just performs the copy.
@@ -29,6 +30,7 @@ pub struct CommonOp {
     dx_buf: Rc<Buffer>,
     dt_buf: Rc<Buffer>,
     N_buf: Rc<Buffer>,
+    x_buf: Rc<Buffer>,
     u_buf: Rc<Buffer>,
     u0_buf: Rc<Buffer>,
 }
@@ -66,6 +68,12 @@ impl DeviceOp for CommonOp {
                 mapped_at_creation: false,
             },
             wgpu::BufferDescriptor {
+                label: Some("x"),
+                size: dbg!(vec_n_points_u8 as wgpu::BufferAddress),
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            },
+            wgpu::BufferDescriptor {
                 label: Some("u"),
                 size: vec_n_points_u8 as BufferAddress,
                 usage: wgpu::BufferUsages::STORAGE
@@ -83,7 +91,7 @@ impl DeviceOp for CommonOp {
 
         let res = state.create_resources("common", &buf_desc_arr[..])?;
         // This never fails as Vec is fixed length.
-        let [dt_buf, dx_buf, N_buf, u_buf, u0_buf] = res.buffers.try_into().unwrap();
+        let [dt_buf, dx_buf, N_buf, x_buf, u_buf, u0_buf] = res.buffers.try_into().unwrap();
 
         let N_arr_u32 = input.N.map(|x| x as u32);
         state
@@ -95,11 +103,22 @@ impl DeviceOp for CommonOp {
         state
             .queue()
             .write_buffer(&N_buf, 0, bytemuck::bytes_of(&N_arr_u32));
+        state.queue().write_buffer(
+            &x_buf,
+            0,
+            bytemuck::cast_slice(
+                input
+                    .x
+                    .as_slice()
+                    .ok_or(CommonOpError::NonContiguousArray)?,
+            ),
+        );
 
         Ok(Self {
             dx_buf,
             dt_buf,
             N_buf,
+            x_buf,
             u_buf,
             u0_buf,
         })
@@ -133,15 +152,17 @@ pub struct CommonOpDesc<'a> {
     dx: Float,
     N: [usize; 3],
     u: &'a Array3F,
+    x: &'a Array3F,
 }
 
 impl<'a> CommonOpDesc<'a> {
-    fn new(dt: Float, dx: Float, u: &'a Array3F) -> Self {
+    fn new(dt: Float, dx: Float, x: &'a Array3F, u: &'a Array3F) -> Self {
         let u_dims = u.shape().try_into().unwrap();
         Self {
             dt,
             dx,
             N: u_dims,
+            x,
             u,
         }
     }
@@ -152,6 +173,8 @@ impl<'a> CommonOpDesc<'a> {
 pub enum CommonOpError {
     #[error("Error from device")]
     DeviceError(#[from] DeviceStateError),
+    #[error("Non-contiguous x array passed to WebGPU Device")]
+    NonContiguousArray,
 }
 
 #[cfg(test)]
@@ -180,11 +203,14 @@ mod tests {
             }
         }
 
+        // u_arr is also the same shape as x_arr so lets just use it.
+        let x_arr = 2.0 * &u0_arr;
+
         let dt = 0.2;
         let dx = 3.5;
-        let common_buf_desc = CommonOpDesc::new(dt, dx, &u0_arr);
-
+        let common_buf_desc = CommonOpDesc::new(dt, dx, &x_arr, &u0_arr);
         let common_op = instance.add_op::<CommonOp>(common_buf_desc).await?;
+
         let u0_buf = common_op.op.u0_buf.clone();
         let u_buf = common_op.op.u_buf.clone();
 
@@ -218,6 +244,16 @@ mod tests {
             }
         }
 
+        // Finally test that the position array is set.
+        test_op.device_exec(TestOpKind::XTest).await?;
+        u_read.device_exec(u_arr.as_slice_mut().unwrap()).await?;
+        for i in 0..10 {
+            for j in 0..12 {
+                assert_relative_eq!(u_arr[(i, j, 0)], 10.0 * i as Float);
+                assert_relative_eq!(u_arr[(i, j, 1)], 10.0 * j as Float);
+            }
+        }
+
         // This test writes dt to all the x values and dt to the y values. This ensures
         // that all the uniform buffers are correct.
         test_op.device_exec(TestOpKind::DtDx).await?;
@@ -235,6 +271,7 @@ mod tests {
         double_u_pipeline: Rc<ComputePipeline>,
         dt_dx_pipeline: Rc<ComputePipeline>,
         index_test_pipeline: Rc<ComputePipeline>,
+        x_test: Rc<ComputePipeline>,
     }
 
     impl DeviceOp for TestOp {
@@ -252,6 +289,7 @@ mod tests {
                     TestOpKind::DoubleU => pass.set_pipeline(&self.double_u_pipeline),
                     TestOpKind::DtDx => pass.set_pipeline(&self.dt_dx_pipeline),
                     TestOpKind::IndexTest => pass.set_pipeline(&self.index_test_pipeline),
+                    TestOpKind::XTest => pass.set_pipeline(&self.x_test),
                 };
                 pass.dispatch_workgroups(32, 1, 1);
             }
@@ -286,10 +324,18 @@ mod tests {
                 &[&state.bind_group_layout("common").unwrap()],
             )?;
 
+            let x_test = state.create_compute_pipeline(
+                "x_test",
+                "x_test",
+                "test_common",
+                &[&state.bind_group_layout("common").unwrap()],
+            )?;
+
             Ok(Self {
                 double_u_pipeline: double_u,
                 dt_dx_pipeline: dt_dx,
                 index_test_pipeline: index_test,
+                x_test,
             })
         }
 
@@ -306,5 +352,6 @@ mod tests {
         DoubleU,
         DtDx,
         IndexTest,
+        XTest,
     }
 }
