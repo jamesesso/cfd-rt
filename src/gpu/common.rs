@@ -156,7 +156,7 @@ pub struct CommonOpDesc<'a> {
 }
 
 impl<'a> CommonOpDesc<'a> {
-    fn new(dt: Float, dx: Float, x: &'a Array3F, u: &'a Array3F) -> Self {
+    pub fn new(dt: Float, dx: Float, x: &'a Array3F, u: &'a Array3F) -> Self {
         let u_dims = u.shape().try_into().unwrap();
         Self {
             dt,
