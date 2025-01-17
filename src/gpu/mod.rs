@@ -15,6 +15,7 @@ pub mod advect;
 pub mod common;
 pub mod copy;
 mod prelude;
+pub mod shared;
 
 // TODO: Update when there are actually shaders that are not test shaders.
 
